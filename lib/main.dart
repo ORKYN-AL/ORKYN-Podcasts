@@ -848,7 +848,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 350), curve: Curves.easeInOut,
                 bottom: 0, left: 0, right: 0,
-                height: _isPlayerExpanded ? MediaQuery.of(context).size.height : 85, // Rehaussé de 75 à 85 pour la place du Slider
+                height: _isPlayerExpanded ? MediaQuery.of(context).size.height : 75,
                 child: Container(
                   decoration: BoxDecoration(
                     color: widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
@@ -863,56 +863,78 @@ class _PodcastScreenState extends State<PodcastScreen> {
       ),
     );
   }
- Widget _buildMiniPlayer(Color titleColor) {
-    return Column(
+
+  Widget _buildMiniPlayer(Color titleColor) {
+    final double progression = _dureeTotale > 0 ? (_positionActuelle / _dureeTotale).clamp(0.0, 1.0) : 0.0;
+
+    return Stack(
       children: [
-        SizedBox(
-          height: 14,
-          child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              activeTrackColor: const Color(0xFFA855F7),
-              inactiveTrackColor: widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFE2E8F0),
-              thumbColor: const Color(0xFFA855F7),
-            ),
-            child: Slider(
-              min: 0.0,
-              max: _dureeTotale > 0 ? _dureeTotale : 1.0,
-              value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0),
-              onChanged: (val) => _changerPosition(val), // Action de saut temporel au clic !
-            ),
+        // Le contenu principal du lecteur (Aligné au centre vertical)
+        Padding(
+          padding: const EdgeInsets.only(top: 4.0, left: 16.0, right: 16.0),
+          child: Row(
+            children: [
+              IconButton(icon: const Icon(Icons.keyboard_arrow_up_rounded, color: Color(0xFF0EA5E9), size: 28), onPressed: () => setState(() => _isPlayerExpanded = true)),
+              const SizedBox(width: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: _currentImageUrl.isNotEmpty ? Image.network(_currentImageUrl, width: 40, height: 40, fit: BoxFit.cover) : Container(color: Colors.purple.withOpacity(0.2), width: 40, height: 40, child: const Icon(Icons.music_note, size: 20, color: Color(0xFFA855F7))),
+              ),
+              const SizedBox(width: 12),
+              
+              // Titre du Podcast
+              Expanded(
+                child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor)),
+              ),
+              
+              // ⏱️ LE CHRONO : Ajouté en plein milieu à côté du titre
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Text(
+                  '${_formaterTemps(_positionActuelle)} / ${_formaterTemps(_dureeTotale)}',
+                  style: TextStyle(fontSize: 12, color: widget.isDarkMode ? Colors.white70 : Colors.black54, fontWeight: FontWeight.bold),
+                ),
+              ),
+              
+              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFA855F7).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text('${_vitesseActuelle}x', style: const TextStyle(color: Color(0xFFA855F7), fontWeight: FontWeight.bold, fontSize: 12))),
+              const SizedBox(width: 8),
+              IconButton(icon: const Icon(Icons.replay_10_rounded, size: 24, color: Colors.grey), onPressed: () => _changerPosition(_positionActuelle - 10.0)),
+              IconButton(icon: Icon(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded), iconSize: 38, color: const Color(0xFFA855F7), onPressed: () => _gererLecture(_currentPlayingUrl!)),
+              IconButton(icon: const Icon(Icons.forward_10_rounded, size: 24, color: Colors.grey), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
+            ],
           ),
         ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
+        
+        Positioned(
+          top: 0, left: 0, right: 0,
+          height: 10, // Zone de clic élargie pour le confort du doigt/souris
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (TapDownDetails details) {
+              // Récupération de la largeur de l'écran pour calculer l'endroit exact du clic
+              final double largeurTotale = MediaQuery.of(context).size.width;
+              final double clicX = details.globalPosition.dx;
+              if (largeurTotale > 0 && _dureeTotale > 0) {
+                final double pourcentageClic = (clicX / largeurTotale).clamp(0.0, 1.0);
+                _changerPosition(pourcentageClic * _dureeTotale);
+              }
+            },
+            child: Stack(
               children: [
-                IconButton(icon: const Icon(Icons.keyboard_arrow_up_rounded, color: Color(0xFF0EA5E9), size: 28), onPressed: () => setState(() => _isPlayerExpanded = true)),
-                const SizedBox(width: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: _currentImageUrl.isNotEmpty ? Image.network(_currentImageUrl, width: 40, height: 40, fit: BoxFit.cover) : Container(color: Colors.purple.withOpacity(0.2), width: 40, height: 40, child: const Icon(Icons.music_note, size: 20, color: Color(0xFFA855F7))),
+                // Fond de la barre
+                Container(
+                  width: double.infinity, height: 3,
+                  color: widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFE2E8F0),
                 ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor))),
-                
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    '${_formaterTemps(_positionActuelle)} / ${_formaterTemps(_dureeTotale)}',
-                    style: TextStyle(fontSize: 12, color: widget.isDarkMode ? Colors.white70 : Colors.black54, fontWeight: FontWeight.bold),
+                // Remplissage de la progression violette
+                FractionallySizedBox(
+                  alignment: Alignment.topLeft,
+                  widthFactor: progression,
+                  child: Container(
+                    height: 3,
+                    color: const Color(0xFFA855F7),
                   ),
                 ),
-                const SizedBox(width: 8),
-                
-                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFA855F7).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text('${_vitesseActuelle}x', style: const TextStyle(color: Color(0xFFA855F7), fontWeight: FontWeight.bold, fontSize: 12))),
-                const SizedBox(width: 8),
-                IconButton(icon: const Icon(Icons.replay_10_rounded, size: 24, color: Colors.grey), onPressed: () => _changerPosition(_positionActuelle - 10.0)),
-                IconButton(icon: Icon(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded), iconSize: 38, color: const Color(0xFFA855F7), onPressed: () => _gererLecture(_currentPlayingUrl!)),
-                IconButton(icon: const Icon(Icons.forward_10_rounded, size: 24, color: Colors.grey), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
               ],
             ),
           ),
