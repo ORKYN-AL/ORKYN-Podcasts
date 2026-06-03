@@ -848,7 +848,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 350), curve: Curves.easeInOut,
                 bottom: 0, left: 0, right: 0,
-                height: _isPlayerExpanded ? MediaQuery.of(context).size.height : 75,
+                height: _isPlayerExpanded ? MediaQuery.of(context).size.height : 80, // Légèrement rehaussé pour le Slider
                 child: Container(
                   decoration: BoxDecoration(
                     color: widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
@@ -867,10 +867,25 @@ class _PodcastScreenState extends State<PodcastScreen> {
   Widget _buildMiniPlayer(Color titleColor) {
     return Column(
       children: [
-        LinearProgressIndicator(
-          value: _dureeTotale > 0 ? (_positionActuelle / _dureeTotale) : 0,
-          backgroundColor: widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFE2E8F0),
-          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFA855F7)), minHeight: 3,
+        // Remplacement de l'indicateur fixe par un vrai Slider interactif
+        SizedBox(
+          height: 12,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              activeTrackColor: const Color(0xFFA855F7),
+              inactiveTrackColor: widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFE2E8F0),
+              thumbColor: const Color(0xFFA855F7),
+            ),
+            child: Slider(
+              min: 0.0,
+              max: _dureeTotale > 0 ? _dureeTotale : 1.0,
+              value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0),
+              onChanged: (val) => _changerPosition(val),
+            ),
+          ),
         ),
         Expanded(
           child: Padding(
@@ -885,6 +900,14 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor))),
+                
+                // Ajout de l'affichage du temps textuel demandé par le supérieur
+                Text(
+                  '${_formaterTemps(_positionActuelle)} / ${_formaterTemps(_dureeTotale)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 12),
+                
                 Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFA855F7).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text('${_vitesseActuelle}x', style: const TextStyle(color: Color(0xFFA855F7), fontWeight: FontWeight.bold, fontSize: 12))),
                 const SizedBox(width: 8),
                 IconButton(icon: const Icon(Icons.replay_10_rounded, size: 24, color: Colors.grey), onPressed: () => _changerPosition(_positionActuelle - 10.0)),
@@ -951,7 +974,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   Align(alignment: Alignment.centerLeft, child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor))),
                   const SizedBox(height: 6),
                   
-                  // Zone de la description scrollable complète
                   Expanded(
                     child: Align(
                       alignment: Alignment.topLeft,
