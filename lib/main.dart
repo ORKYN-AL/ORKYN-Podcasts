@@ -394,7 +394,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
     }
   }
 
-  // Pop-up d'authentification Admin cachée
   void _demanderCodeAdmin() {
     final TextEditingController codeController = TextEditingController();
     showDialog(
@@ -939,8 +938,8 @@ class _PodcastScreenState extends State<PodcastScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final double imageSize = (constraints.maxHeight * 0.35).clamp(140.0, 260.0);
-            final double spaceBetween = (constraints.maxHeight * 0.02).clamp(8.0, 24.0);
+            final double imageSize = (constraints.maxHeight * 0.32).clamp(130.0, 240.0);
+            final double spaceBetween = (constraints.maxHeight * 0.02).clamp(6.0, 18.0);
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
               child: Column(
@@ -948,14 +947,28 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   Center(child: Container(width: imageSize, height: imageSize, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8))], image: DecorationImage(image: NetworkImage(_currentImageUrl.isNotEmpty ? _currentImageUrl : 'https://picsum.photos/id/101/400/400'), fit: BoxFit.cover)))),
                   SizedBox(height: spaceBetween),
                   Align(alignment: Alignment.centerLeft, child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor))),
-                  const SizedBox(height: 4),
-                  Align(alignment: Alignment.centerLeft, child: Text(_currentDescription, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.3))),
-                  const Spacer(flex: 2),
+                  const SizedBox(height: 6),
+                  
+                  // Zone de la description corrigée avec défilement et affichage total
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Text(
+                          _currentDescription, 
+                          style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.4),
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  SizedBox(height: spaceBetween),
                   Slider(activeColor: const Color(0xFFA855F7), inactiveColor: widget.isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0), min: 0.0, max: _dureeTotale > 0 ? _dureeTotale : 1.0, value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0), onChanged: (val) => _changerPosition(val)),
                   Padding(padding: const EdgeInsets.symmetric(horizontal: 16.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_formaterTemps(_positionActuelle), style: TextStyle(fontSize: 12, color: subTitleColor)), Text(_formaterTemps(_dureeTotale), style: TextStyle(fontSize: 12, color: subTitleColor))])),
-                  const Spacer(flex: 2),
+                  SizedBox(height: spaceBetween),
                   _buildTapisVitesses(),
-                  const Spacer(flex: 2),
+                  SizedBox(height: spaceBetween),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -966,7 +979,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       IconButton(icon: const Icon(Icons.forward_10_rounded), iconSize: 36, color: titleColor, onPressed: () => _changerPosition(_positionActuelle + 10.0)),
                     ],
                   ),
-                  const Spacer(flex: 1),
+                  const SizedBox(height: 8),
                 ],
               ),
             );
@@ -977,9 +990,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
   }
 }
 
-// ==========================================
-// 🛠️ NOUVEL ÉCRAN : FORMULAIRE D'UPLOAD ADMIN
-// ==========================================
 class AdminUploadScreen extends StatefulWidget {
   final bool isDarkMode;
   const AdminUploadScreen({super.key, required this.isDarkMode});
@@ -1013,7 +1023,6 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
     setState(() { _enCoursEnvoi = true; });
 
     try {
-      // Injection directe dans Firebase Firestore
       await FirebaseFirestore.instance.collection('podcasts').add({
         'Titre': _titleController.text.trim(),
         'Description': _descriptionController.text.trim(),
@@ -1024,7 +1033,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: Colors.green, content: Text("Podcast ajouté avec succès ! 🎉")));
-      Navigator.pop(context); // Retour automatique à l'écran d'accueil
+      Navigator.pop(context); 
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: Colors.red, content: Text("Erreur d'envoi : $e")));
     } finally {
