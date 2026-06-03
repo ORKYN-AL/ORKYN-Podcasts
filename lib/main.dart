@@ -350,7 +350,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
         
         if (data != null) {
           _currentTitle = data['Titre'] ?? data['titre'] ?? 'Sans titre';
-          _currentDescription = data['Description'] ?? data['description'] ?? '';
+          _currentDescription = data['Description'] ?? data['description'] ?? 'Pas de description renseignée';
           _currentImageUrl = data['image_url'] ?? data['imageUrl'] ?? '';
         }
       });
@@ -480,6 +480,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     final String audioUrl = podcast['audio_url'] ?? podcast['audioUrl'] ?? '';
     final String imageUrl = podcast['image_url'] ?? podcast['imageUrl'] ?? '';
     final String titre = podcast['Titre'] ?? podcast['titre'] ?? 'Sans titre';
+    final String description = podcast['Description'] ?? podcast['description'] ?? 'Pas de description';
     final bool isLiked = _podcastsLikesIds.contains(idDocument);
 
     return Container(
@@ -543,7 +544,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 children: [
                   Text(titre, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: titleColor)),
                   const SizedBox(height: 4),
-                  Text(podcast['Description'] ?? podcast['description'] ?? 'Pas de description', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: subTitleColor, height: 1.2)),
+                  Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: subTitleColor, height: 1.2)),
                 ],
               ),
             )
@@ -558,6 +559,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     final String imageUrl = podcast['image_url'] ?? podcast['imageUrl'] ?? '';
     final String titre = podcast['Titre'] ?? podcast['titre'] ?? 'Sans titre';
     final String theme = podcast['Theme'] ?? podcast['theme'] ?? 'Général';
+    final String description = podcast['Description'] ?? podcast['description'] ?? 'Pas de description';
     final bool isLiked = _podcastsLikesIds.contains(idDocument);
 
     return Padding(
@@ -608,7 +610,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(podcast['Description'] ?? podcast['description'] ?? 'Pas de description', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.2)),
+                    Text(description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.2)),
                   ],
                 ),
               ),
@@ -949,7 +951,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   Align(alignment: Alignment.centerLeft, child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor))),
                   const SizedBox(height: 6),
                   
-                  // Zone de la description corrigée avec défilement et affichage total
+                  // Zone de la description scrollable complète
                   Expanded(
                     child: Align(
                       alignment: Alignment.topLeft,
