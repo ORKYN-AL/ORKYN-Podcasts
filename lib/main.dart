@@ -863,14 +863,9 @@ class _PodcastScreenState extends State<PodcastScreen> {
       ),
     );
   }
-
-  // ==========================================
-  // 🛠️ MODIFICATION PRINCIPALE ICI : LE LECTEUR DU BAS
-  // ==========================================
-  Widget _buildMiniPlayer(Color titleColor) {
+ Widget _buildMiniPlayer(Color titleColor) {
     return Column(
       children: [
-        // 1. CHANGEMENT : Ajout d'un vrai Slider cliquable pour remplacer l'ancienne barre rouge fixe
         SizedBox(
           height: 14,
           child: SliderTheme(
@@ -904,7 +899,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 const SizedBox(width: 12),
                 Expanded(child: Text(_currentTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: titleColor))),
                 
-                // 2. CHANGEMENT : Insertion du chrono textuel "00:00 / 00:00" à droite du titre
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   child: Text(
