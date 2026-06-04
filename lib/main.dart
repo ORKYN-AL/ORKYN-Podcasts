@@ -657,11 +657,11 @@ class _PodcastScreenState extends State<PodcastScreen> {
         Positioned(
           top: -18, left: 0, right: 0, height: 40,
           child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0), 
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0, pressedThumbRadius: 0.0),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 0.0),
               trackHeight: 3.0, 
-              activeTrackColor: const Color(0xFFA855F7),
+              activeTrackColor: const Color(0xFFA855F7), // Aux couleurs violettes de ton application
               inactiveTrackColor: Colors.grey.withOpacity(0.2),
             ),
             child: Slider(
