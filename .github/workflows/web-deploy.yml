@@ -19,7 +19,9 @@ jobs:
           channel: 'stable'
 
       - name: Build Web Application
-        run: flutter build web --base-href "/ORKYN-Podcasts/" --no-wasm-dry-run
+        run: |
+          flutter build web --base-href "/ORKYN-Podcasts/" --no-wasm-dry-run
+          touch build/web/.nojekyll
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
