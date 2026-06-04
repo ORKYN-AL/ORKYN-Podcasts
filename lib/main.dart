@@ -496,121 +496,11 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_searchFocusNode.hasFocus) _globalFocusNode.requestFocus(); });
-    final Color cardColor = widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white;
-    final Color barColor = widget.isDarkMode ? const Color(0xFF1A1A1A) : Colors.white;
-    final Color searchFieldColor = widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFF1F5F9);
-    final Color titleColor = widget.isDarkMode ? Colors.white : const Color(0xFF0F172A);
-    final Color subTitleColor = widget.isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+  /// =================================================================
+  /// 🛠️ LES 3 COMPOSANTS MODERNISÉS AVEC TYPES COMPATIBLES WEB STREAMS
+  /// =================================================================
 
-    return KeyboardListener(
-      focusNode: _globalFocusNode, onKeyEvent: _gererClavier,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            Container(
-              decoration: BoxDecoration(gradient: widget.isDarkMode ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1A1A1A), Color(0xFF121212)]) : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF4F7F9), Color(0xFFE5EBF0)])),
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _podcastsStream,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final tousLesDocs = snapshot.data!.docs;
-                  final Set<String> themesUniques = {"Tous"};
-                  for (var doc in tousLesDocs) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
-                  }
-
-                  final listeFiltree = tousLesDocs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
-                    final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
-                    final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
-                    return correspondRecherche && correspondCategorie && correspondFavoris;
-                  }).toList();
-
-                  bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
-
-                  return CustomScrollView(
-                    slivers: [
-                      SliverAppBar(
-                        floating: true, pinned: true, centerTitle: true, backgroundColor: barColor, elevation: 2,
-                        leading: IconButton(icon: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF94A3B8)), onPressed: () => _demanderCodeAdmin()),
-                        title: RichText(text: const TextSpan(children: [TextSpan(text: "ORKYN' ", style: TextStyle(color: Color(0xFFA855F7), fontWeight: FontWeight.bold, fontSize: 20)), TextSpan(text: "Podcasts", style: TextStyle(color: Color(0xFF0EA5E9), fontSize: 20))])),
-                        actions: [
-                          Stack(children: [IconButton(icon: Icon(Icons.notifications_rounded, color: aDesNouveautes ? const Color(0xFF0EA5E9) : const Color(0xFF475569)), onPressed: () => _ouvrirNotifications(tousLesDocs)), if (aDesNouveautes) Positioned(top: 10, right: 10, child: Container(width: 9, height: 9, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)))]),
-                          IconButton(icon: Icon(widget.isDarkMode ? Icons.wb_sunny_rounded : Icons.nightlight_round, color: widget.isDarkMode ? Colors.amber : const Color(0xFF475569)), onPressed: () => widget.onThemeChanged(!widget.isDarkMode)),
-                          IconButton(icon: const Icon(Icons.logout_rounded, color: Colors.redAccent), onPressed: () { _audioElement?.pause(); widget.onLogout(); }),
-                        ],
-                      ),
-                      SliverToBoxAdapter(
-                        child: Container(
-                          color: barColor, padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  height: 45, decoration: BoxDecoration(color: searchFieldColor, borderRadius: BorderRadius.circular(12)),
-                                  child: TextField(
-                                    controller: _searchController, focusNode: _searchFocusNode, style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black),
-                                    onChanged: (value) => setState(() { _rechercheTexte = value; }),
-                                    decoration: InputDecoration(hintText: 'Rechercher...', prefixIcon: const Icon(Icons.search_rounded), suffixIcon: _rechercheTexte.isNotEmpty ? IconButton(icon: const Icon(Icons.clear_rounded), onPressed: () => setState(() { _searchController.clear(); _rechercheTexte = ""; })) : null, border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 11)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(icon: Icon(_afficherUniquementFavoris ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: Colors.redAccent), onPressed: () => setState(() { _afficherUniquementFavoris = !_afficherUniquementFavoris; })),
-                              Container(
-                                height: 45, padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: widget.isDarkMode ? const Color(0xFF2E1A47) : const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(12)),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: _categorieSelectionnee, dropdownColor: widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-                                    onChanged: (v) { if (v != null) setState(() { _categorieSelectionnee = v; }); },
-                                    items: themesUniques.map((t) => DropdownMenuItem(value: t, child: Text(t, style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black)))).toList(),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_categorieSelectionnee == "Tous" && _rechercheTexte.isEmpty && !_afficherUniquementFavoris) ...[
-                        const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(left: 24.0, top: 24.0, bottom: 12.0), child: Text('✨ Nouveautés / Derniers ajouts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[listeFiltree.length - 1 - index], cardColor, titleColor, subTitleColor)))),
-                        const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(left: 24.0, top: 28.0, bottom: 12.0), child: Text('🔥 Sélection Orkyn\'', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length > 3 ? 3 : listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[index], cardColor, titleColor, subTitleColor)))),
-                        const SliverToBoxAdapter(child: SizedBox(height: 120)),
-                      ] else ...[
-                        SliverList(delegate: SliverChildBuilderDelegate((context, index) => _buildPodcastCardVertical(listeFiltree[index], cardColor, titleColor, subTitleColor), childCount: listeFiltree.length)),
-                        const SliverToBoxAdapter(child: SizedBox(height: 120)),
-                      ]
-                    ],
-                  );
-                },
-              ),
-            ),
-            if (_currentPlayingUrl != null)
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 350), bottom: 0, left: 0, right: 0,
-                height: _isPlayerExpanded ? MediaQuery.of(context).size.height : 75,
-                child: Container(
-                  decoration: BoxDecoration(color: widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, -4))]),
-                  child: _isPlayerExpanded ? _buildFullPlayer(titleColor, subTitleColor) : _buildMiniPlayer(titleColor), 
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// ========================================================
-  /// 🛠️ CONFIGURATION INTERNE : LES 3 MISES À JOUR DEMANDÉES
-  /// ========================================================
-
-  /// MÀJ 1 : LA LIGNE D'ÉCOUTE AMÉLIORÉE (Hitbox globale de 40px)
+  /// 1. LA LIGNE D'ÉCOUTE AMÉLIORÉE (Hitbox globale de 40px - Multi-plateforme)
   Widget _buildBarreProgressionForteSensibilite() {
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
@@ -623,7 +513,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
         overlayColor: const Color(0xFF9D57FF).withOpacity(0.2),
       ),
       child: Container(
-        height: 40.0, // Zone élargie pour capturer parfaitement le clic tactile
+        height: 40.0, // Zone tactile supérieure pour attraper le clic
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
         child: Slider(
@@ -636,7 +526,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  /// MÀJ 2 : LE TAPIS DE VITESSE COMPLET (Capsule à 6 boutons alignés)
+  /// 2. LE TAPIS DE VITESSE EN CAPSULE SOMBRE (6 Vitesses Alignées)
   Widget _buildTapisVitessesComplet() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -684,7 +574,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  /// MÀJ 3 : LE BOUTON DE VITESSE INTERACTIF CYCLIQUE
+  /// 3. LE BOUTON DE VITESSE INTERACTIF CYCLIQUE
   Widget _buildBoutonVitesseInteractif() {
     return GestureDetector(
       onTap: () {
@@ -739,7 +629,11 @@ class _PodcastScreenState extends State<PodcastScreen> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapDown: (details) {
-              if (_dureeTotale > 0) { _changerPosition((details.globalPosition.dx / MediaQuery.of(context).size.width).clamp(0.0, 1.0) * _dureeTotale); }
+              if (_dureeTotale > 0) {
+                final double largeurTotale = MediaQuery.of(context).size.width;
+                final double cibleClic = (details.globalPosition.dx / largeurTotale).clamp(0.0, 1.0);
+                _changerPosition(cibleClic * _dureeTotale);
+              }
             },
             child: Stack(children: [Container(width: double.infinity, height: 3, color: Colors.grey.withOpacity(0.2)), Container(height: 3, width: MediaQuery.of(context).size.width * progression, color: const Color(0xFFA855F7))]),
           ),
@@ -762,13 +656,13 @@ class _PodcastScreenState extends State<PodcastScreen> {
             const SizedBox(height: 8),
             Expanded(child: SingleChildScrollView(child: Text(_currentDescription, style: TextStyle(fontSize: 13, color: subTitleColor)))),
             
-            // INTÉGRATION MÀJ 1 : Ligne d'écoute forte sensibilité implantée ici
+            // INTÉGRATION MÀJ 1 : Remplacement par la ligne d'écoute à forte sensibilité
             _buildBarreProgressionForteSensibilite(),
             
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_formaterTemps(_positionActuelle)), Text(_formaterTemps(_dureeTotale))]),
             const SizedBox(height: 20),
             
-            // INTÉGRATION MÀJ 2 : Tapis de vitesse capsule complet positionné au-dessus des contrôles
+            // INTÉGRATION MÀJ 2 : Ajout du tapis déroulant en capsule alignée
             _buildTapisVitessesComplet(),
             const SizedBox(height: 20),
             
@@ -782,7 +676,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 IconButton(icon: const Icon(Icons.forward_10_rounded, size: 36), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
                 const SizedBox(width: 24),
                 
-                // INTÉGRATION MÀJ 3 : Bouton interactif cyclique placé à côté des contrôles multimédias
+                // INTÉGRATION MÀJ 3 : Ajout du bouton de vitesse interactif cyclique
                 _buildBoutonVitesseInteractif(),
               ],
             )
