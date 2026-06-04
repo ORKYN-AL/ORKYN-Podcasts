@@ -606,6 +606,114 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
+  /// ========================================================
+  /// 🛠️ CONFIGURATION INTERNE : LES 3 MISES À JOUR DEMANDÉES
+  /// ========================================================
+
+  /// MÀJ 1 : LA LIGNE D'ÉCOUTE AMÉLIORÉE (Hitbox globale de 40px)
+  Widget _buildBarreProgressionForteSensibilite() {
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0, pressedThumbRadius: 9.0),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 18.0),
+        trackHeight: 4.0, 
+        activeTrackColor: const Color(0xFF9D57FF), 
+        inactiveTrackColor: Colors.white.withOpacity(0.15),
+        thumbColor: const Color(0xFF9D57FF),
+        overlayColor: const Color(0xFF9D57FF).withOpacity(0.2),
+      ),
+      child: Container(
+        height: 40.0, // Zone élargie pour capturer parfaitement le clic tactile
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: Slider(
+          min: 0.0,
+          max: _dureeTotale > 0.0 ? _dureeTotale : 1.0,
+          value: _positionActuelle.clamp(0.0, _dureeTotale > 0.0 ? _dureeTotale : 1.0),
+          onChanged: (value) => _changerPosition(value),
+        ),
+      ),
+    );
+  }
+
+  /// MÀJ 2 : LE TAPIS DE VITESSE COMPLET (Capsule à 6 boutons alignés)
+  Widget _buildTapisVitessesComplet() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E222B), 
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withOpacity(0.05)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: _vitessesDisponibles.map((v) {
+              final bool isSelected = _vitesseActuelle == v;
+              return GestureDetector(
+                onTap: () => _selectionnerVitesse(v),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFF9D57FF).withOpacity(0.2) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF9D57FF) : Colors.transparent, 
+                      width: 1.5
+                    ),
+                  ),
+                  child: Text(
+                    "${v}x",
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey.withOpacity(0.7),
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 2),
+        const Icon(Icons.arrow_drop_up, color: Color(0xFF9D57FF), size: 18),
+      ],
+    );
+  }
+
+  /// MÀJ 3 : LE BOUTON DE VITESSE INTERACTIF CYCLIQUE
+  Widget _buildBoutonVitesseInteractif() {
+    return GestureDetector(
+      onTap: () {
+        int indexActuel = _vitessesDisponibles.indexOf(_vitesseActuelle);
+        int prochainIndex = (indexActuel + 1) % _vitessesDisponibles.length;
+        _selectionnerVitesse(_vitessesDisponibles[prochainIndex]);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E222B), 
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "${_vitesseActuelle}x",
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.speed, color: Color(0xFF9D57FF), size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMiniPlayer(Color titleColor) {
     final double progression = (_dureeTotale > 0.0 && !_dureeTotale.isNaN) ? (_positionActuelle / _dureeTotale).clamp(0.0, 1.0) : 0.0;
     return Stack(
@@ -653,22 +761,29 @@ class _PodcastScreenState extends State<PodcastScreen> {
             Text(_currentTitle, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)),
             const SizedBox(height: 8),
             Expanded(child: SingleChildScrollView(child: Text(_currentDescription, style: TextStyle(fontSize: 13, color: subTitleColor)))),
-            Slider(activeColor: const Color(0xFFA855F7), value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0), max: _dureeTotale > 0 ? _dureeTotale : 1.0, onChanged: (v) => _changerPosition(v)),
+            
+            // INTÉGRATION MÀJ 1 : Ligne d'écoute forte sensibilité implantée ici
+            _buildBarreProgressionForteSensibilite(),
+            
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_formaterTemps(_positionActuelle)), Text(_formaterTemps(_dureeTotale))]),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: _vitessesDisponibles.map((v) => Padding(padding: const EdgeInsets.symmetric(horizontal: 4.0), child: ChoiceChip(label: Text('${v}x'), selected: _vitesseActuelle == v, onSelected: (_) => _selectionnerVitesse(v)))).toList(),
-              ),
-            ),
+            const SizedBox(height: 20),
+            
+            // INTÉGRATION MÀJ 2 : Tapis de vitesse capsule complet positionné au-dessus des contrôles
+            _buildTapisVitessesComplet(),
+            const SizedBox(height: 20),
+            
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 IconButton(icon: const Icon(Icons.replay_10_rounded, size: 36), onPressed: () => _changerPosition(_positionActuelle - 10.0)),
+                const SizedBox(width: 16),
                 IconButton(icon: Icon(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, size: 64, color: const Color(0xFFA855F7)), onPressed: () => _gererLecture(_currentPlayingUrl!)),
+                const SizedBox(width: 16),
                 IconButton(icon: const Icon(Icons.forward_10_rounded, size: 36), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
+                const SizedBox(width: 24),
+                
+                // INTÉGRATION MÀJ 3 : Bouton interactif cyclique placé à côté des contrôles multimédias
+                _buildBoutonVitesseInteractif(),
               ],
             )
           ],
