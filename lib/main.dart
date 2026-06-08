@@ -298,11 +298,23 @@ class _PodcastScreenState extends State<PodcastScreen> {
         }
       }
 
-      // Tri alphabétique direct et ultra-stable (ne peut jamais faire crasher le lecteur)
+      // Tri de sécurité numérique robuste pour l'enchaînement de la Partie 1 à la Partie 9
       listeChapitres.sort((a, b) {
         final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
-        return tA.compareTo(tB);
+        
+        int extraireNumeroPartie(String titreComplet) {
+          // Découpe le texte après le mot "Partie " pour récupérer le chiffre directement
+          if (titreComplet.contains('Partie')) {
+            final partiesDuTexte = titreComplet.split('Partie');
+            if (partiesDuTexte.length > 1) {
+              return int.tryParse(partiesDuTexte.last.trim()) ?? 0;
+            }
+          }
+          return 0;
+        }
+
+        return extraireNumeroPartie(tA).compareTo(extraireNumeroPartie(tB));
       });
 
       setState(() {
@@ -326,6 +338,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
       setState(() { _isPlaying = true; });
     } 
     else {
+      // Nettoyage et relance saine de l'instance audio pour le Web
       _audioElement?.pause();
       _audioElement = html.AudioElement(url)..play();
       _audioElement!.playbackRate = _vitesseActuelle;
@@ -576,7 +589,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
 
   Widget _buildVueAlbumSerie(Color titleColor, Color subTitleColor, Color cardColor) {
     final String imageSerie = _serieSelectionneeData?['image_url'] ?? '';
-    final String titreSerie = _serieSelectionneeData?['Theme'] ?? 'Série';
+    final String titreSerie = "MANAGEMENT";
     final String descriptionSerie = _serieSelectionneeData?['Description'] ?? '';
 
     return Scaffold(
@@ -588,7 +601,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
           icon: const Icon(Icons.arrow_back_rounded, size: 28),
           onPressed: () => setState(() => _serieSelectionneeData = null), 
         ),
-        title: Text(titreSerie.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(titreSerie, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
       ),
       body: ListView(
@@ -605,7 +618,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Center(child: Text(titreSerie.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
+          Center(child: Text(titreSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -692,18 +705,19 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
-                  // Règle d'exclusion : masquer de l'accueil les titres contenant "EM Partie"
+                  // FILTRE D'EXCLUSION : Masque de l'accueil tout ce qui contient le mot clé "Partie"
                   final listeFiltree = tousLesDocs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final String titre = (data['Titre'] ?? '').toString();
                     
-                    final bool estUnChapitreAMasquer = titre.contains('EM Partie');
+                    // RÈGLE SIMPLE : Si le titre contient "Partie", il n'est pas affiché sur l'accueil
+                    final bool estUnChapitreA_Masquer = titre.contains('Partie');
 
                     final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
                     final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
                     final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
                     
-                    return !estUnChapitreAMasquer && correspondRecherche && correspondCategorie && correspondFavoris;
+                    return !estUnChapitreA_Masquer && correspondRecherche && correspondCategorie && correspondFavoris;
                   }).toList();
 
                   bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
