@@ -205,7 +205,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
   html.AudioElement? _audioElement;
   String? _currentPlayingUrl;
   String _currentTitle = "Podcast en cours";
-  String _currentDescription = "";
   String _currentImageUrl = "";
   bool _isPlaying = false;
   double _positionActuelle = 0.0;
@@ -304,7 +303,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         
         int extraireNumeroPartie(String titreComplet) {
-          // Découpe le texte après le mot "Partie " pour récupérer le chiffre directement
           if (titreComplet.contains('Partie')) {
             final partiesDuTexte = titreComplet.split('Partie');
             if (partiesDuTexte.length > 1) {
@@ -338,7 +336,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
       setState(() { _isPlaying = true; });
     } 
     else {
-      // Nettoyage et relance saine de l'instance audio pour le Web
       _audioElement?.pause();
       _audioElement = html.AudioElement(url)..play();
       _audioElement!.playbackRate = _vitesseActuelle;
@@ -350,7 +347,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
         _dureeTotale = 0.0;
         if (data != null) {
           _currentTitle = data['Titre'] ?? data['titre'] ?? 'Sans titre';
-          _currentDescription = data['Description'] ?? data['description'] ?? '';
           _currentImageUrl = data['image_url'] ?? data['imageUrl'] ?? '';
         }
       });
@@ -636,15 +632,26 @@ class _PodcastScreenState extends State<PodcastScreen> {
               final data = _grosPodcastIntegral!.data() as Map<String, dynamic>;
               final String url = data['audio_url'] ?? '';
               final bool enCours = _currentPlayingUrl == url;
+              final bool isGrosLiked = _podcastsLikesIds.contains(_grosPodcastIntegral!.id);
+
               return Card(
                 color: enCours ? const Color(0xFFA855F7).withOpacity(0.15) : const Color(0xFFA855F7).withOpacity(0.05),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFFA855F7), width: 1)),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 36),
+                  leading: IconButton(
+                    icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 36),
+                    onPressed: () { if (url.isNotEmpty) _gererLecture(url, data); },
+                  ),
                   title: Text(data['Titre'] ?? 'Podcast Intégral', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: enCours ? const Color(0xFFA855F7) : titleColor)),
                   subtitle: const Text("Écouter la slide en entier", style: TextStyle(fontSize: 12)),
-                  onTap: () { if (url.isNotEmpty) _gererLecture(url, data); },
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 20), onPressed: () => _demanderCodeAdmin(docAModifier: _grosPodcastIntegral)),
+                      IconButton(icon: Icon(isGrosLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isGrosLiked ? Colors.redAccent : Colors.grey, size: 22), onPressed: () => _basculerLike(_grosPodcastIntegral!.id)),
+                    ],
+                  ),
                 ),
               );
             }),
@@ -657,19 +664,28 @@ class _PodcastScreenState extends State<PodcastScreen> {
             final ep = doc.data() as Map<String, dynamic>;
             final String url = ep['audio_url'] ?? '';
             final bool enCours = _currentPlayingUrl == url;
+            final bool isChapLiked = _podcastsLikesIds.contains(doc.id);
 
             return Card(
               color: enCours ? const Color(0xFFA855F7).withOpacity(0.1) : cardColor,
               margin: const EdgeInsets.symmetric(vertical: 6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ListTile(
-                leading: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 28),
+                leading: IconButton(
+                  icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 28),
+                  onPressed: () { if (url.isNotEmpty) _gererLecture(url, ep); },
+                ),
                 title: Text(ep['Titre'] ?? 'Sans titre', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: enCours ? const Color(0xFFA855F7) : titleColor)),
-                trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-                onTap: () { if (url.isNotEmpty) _gererLecture(url, ep); },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
+                    IconButton(icon: Icon(isChapLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isChapLiked ? Colors.redAccent : Colors.grey, size: 20), onPressed: () => _basculerLike(doc.id)),
+                  ],
+                ),
               ),
             );
-          }),
+          }), // FIX SYNTAXE LIGNE 691 : Accolade fermante insérée proprement pour mapper la collection
           const SizedBox(height: 120), 
         ],
       ),
@@ -705,19 +721,18 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
-                  // FILTRE D'EXCLUSION : Masque de l'accueil tout ce qui contient le mot clé "Partie"
+                  // Masquer de l'accueil tout ce qui contient le tag "Partie"
                   final listeFiltree = tousLesDocs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final String titre = (data['Titre'] ?? '').toString();
                     
-                    // RÈGLE SIMPLE : Si le titre contient "Partie", il n'est pas affiché sur l'accueil
-                    final bool estUnChapitreA_Masquer = titre.contains('Partie');
+                    final bool estUnChapitreAMasquer = titre.contains('Partie');
 
                     final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
                     final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
                     final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
                     
-                    return !estUnChapitreA_Masquer && correspondRecherche && correspondCategorie && correspondFavoris;
+                    return !estUnChapitreAMasquer && correspondRecherche && correspondCategorie && correspondFavoris;
                   }).toList();
 
                   bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
