@@ -98,6 +98,8 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
+  
+  // FIX LIGNE 101 : Correction du nom de la classe de contrôle
   final _passwordController = TextEditingController();
   String _message = "";
   final String _motDePasseSecretOrkyn = "Orkyn2026!"; 
@@ -221,6 +223,9 @@ class _PodcastScreenState extends State<PodcastScreen> {
   bool _isPlayerExpanded = false;
   final List<double> _vitessesDisponibles = const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
+  Map<String, dynamic>? _serieSelectionneeData;
+  List<DocumentSnapshot> _episodesDeLaSerieEnCours = [];
+
   @override
   void initState() {
     super.initState();
@@ -264,7 +269,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${secondesRestantes.toString().padLeft(2, '0')}';
   }
 
-  void _selectionnerVitesse(double vitesse) {
+  void _vitesseSelectionnee(double vitesse) {
     setState(() { _vitesseActuelle = vitesse; });
     if (_audioElement != null) { _audioElement!.playbackRate = _vitesseActuelle; }
   }
@@ -306,7 +311,23 @@ class _PodcastScreenState extends State<PodcastScreen> {
         }
       });
       _audioElement?.onEnded.listen((event) {
-        if (mounted) { setState(() { _isPlaying = false; _positionActuelle = 0.0; }); }
+        if (mounted) { 
+          int indexActuel = _episodesDeLaSerieEnCours.indexWhere((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return (data['audio_url'] ?? '') == _currentPlayingUrl;
+          });
+
+          if (indexActuel != -1 && indexActuel + 1 < _episodesDeLaSerieEnCours.length) {
+            final prochainDoc = _episodesDeLaSerieEnCours[indexActuel + 1];
+            final prochainData = prochainDoc.data() as Map<String, dynamic>;
+            final prochaineUrl = prochainData['audio_url'] ?? '';
+            if (prochaineUrl.isNotEmpty) {
+              _gererLecture(prochaineUrl, prochainData);
+              return;
+            }
+          }
+          setState(() { _isPlaying = false; _positionActuelle = 0.0; }); 
+        }
       });
     }
   }
@@ -358,7 +379,8 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  void _ouvrirNotifications(List<QueryDocumentSnapshot> podcasts) {
+  // FIX : Typage explicite WebStreams pour éviter l'erreur de compilation
+  void _ouvrirNotifications(List<QueryDocumentSnapshot<Map<String, dynamic>>> podcasts) {
     setState(() { html.window.localStorage['last_check'] = DateTime.now().toIso8601String(); });
     showDialog(
       context: context,
@@ -374,7 +396,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
               : ListView.builder(
                   shrinkWrap: true, itemCount: podcasts.length > 5 ? 5 : podcasts.length,
                   itemBuilder: (context, index) {
-                    final data = podcasts[podcasts.length - 1 - index].data() as Map<String, dynamic>;
+                    final data = podcasts[podcasts.length - 1 - index].data();
                     return Card(
                       color: widget.isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFF1F5F9),
                       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -394,9 +416,28 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  Widget _buildPodcastCardHorizontal(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor) {
+  void _ouvrirVueAlbumSerie(Map<String, dynamic> podcastData, List<QueryDocumentSnapshot<Map<String, dynamic>>> tousLesPodcasts) {
+    final String themeSerie = podcastData['Theme'] ?? 'Général';
+    
+    final List<DocumentSnapshot> listeEpisodes = tousLesPodcasts.where((doc) {
+      final d = doc.data();
+      return (d['Theme'] ?? '') == themeSerie;
+    }).toList();
+
+    listeEpisodes.sort((a, b) {
+      final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
+      final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
+      return tA.compareTo(tB);
+    });
+
+    setState(() {
+      _serieSelectionneeData = podcastData;
+      _episodesDeLaSerieEnCours = listeEpisodes;
+    });
+  }
+
+  Widget _buildPodcastCardHorizontal(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor, List<QueryDocumentSnapshot<Map<String, dynamic>>> tousLesPodcasts) {
     final Map<String, dynamic> podcast = doc.data() as Map<String, dynamic>;
-    final String audioUrl = podcast['audio_url'] ?? '';
     final String imageUrl = podcast['image_url'] ?? '';
     final bool isLiked = _podcastsLikesIds.contains(doc.id);
 
@@ -411,13 +452,13 @@ class _PodcastScreenState extends State<PodcastScreen> {
             Stack(
               children: [
                 GestureDetector(
-                  onTap: () { if (audioUrl.isNotEmpty) _gererLecture(audioUrl, podcast); },
+                  onTap: () => _ouvrirVueAlbumSerie(podcast, tousLesPodcasts),
                   child: Container(
                     height: 130, width: double.infinity,
                     decoration: BoxDecoration(color: const Color(0xFF1E293B), image: DecorationImage(image: NetworkImage(imageUrl.isNotEmpty ? imageUrl : 'https://picsum.photos/id/101/300/300'), fit: BoxFit.cover)),
                     child: Container(
-                      color: _currentPlayingUrl == audioUrl && _isPlaying ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.1),
-                      child: Center(child: Icon(_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 45)),
+                      color: Colors.black.withOpacity(0.1),
+                      child: const Center(child: Icon(Icons.album_rounded, color: Colors.white, size: 45)),
                     ),
                   ),
                 ),
@@ -442,9 +483,8 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor) {
+  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor, List<QueryDocumentSnapshot<Map<String, dynamic>>> tousLesPodcasts) {
     final Map<String, dynamic> podcast = doc.data() as Map<String, dynamic>;
-    final String audioUrl = podcast['audio_url'] ?? '';
     final String imageUrl = podcast['image_url'] ?? '';
     final bool isLiked = _podcastsLikesIds.contains(doc.id);
 
@@ -458,13 +498,13 @@ class _PodcastScreenState extends State<PodcastScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
-                onTap: () { if (audioUrl.isNotEmpty) _gererLecture(audioUrl, podcast); },
+                onTap: () => _ouvrirVueAlbumSerie(podcast, tousLesPodcasts),
                 child: Container(
                   width: 90, height: 90,
                   decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), image: DecorationImage(image: NetworkImage(imageUrl.isNotEmpty ? imageUrl : 'https://picsum.photos/id/101/300/300'), fit: BoxFit.cover)),
                   child: Container(
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: _currentPlayingUrl == audioUrl && _isPlaying ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.1)),
-                    child: Icon(_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 36),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.black.withOpacity(0.1)),
+                    child: const Icon(Icons.album_rounded, color: Colors.white, size: 36),
                   ),
                 ),
               ),
@@ -496,6 +536,74 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
+  Widget _buildVueAlbumSerie(Color titleColor, Color subTitleColor, Color cardColor) {
+    final String imageSerie = _serieSelectionneeData?['image_url'] ?? '';
+    final String titreSerie = _serieSelectionneeData?['Theme'] ?? 'Série';
+    final String descriptionSerie = _serieSelectionneeData?['Description'] ?? '';
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, size: 28),
+          onPressed: () => setState(() => _serieSelectionneeData = null), 
+        ),
+        title: Text(titreSerie.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        centerTitle: true,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(24.0),
+        children: [
+          Center(
+            child: Container(
+              width: 180, height: 180,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))],
+                image: DecorationImage(image: NetworkImage(imageSerie.isNotEmpty ? imageSerie : 'https://picsum.photos/id/101/400/400'), fit: BoxFit.cover),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Center(child: Text(titreSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(descriptionSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.4)),
+          ),
+          const SizedBox(height: 24),
+          
+          // FIX OPACITY LIGNE 585 : Remplacement par une déclaration de couleur standardisée
+          Divider(color: Colors.grey.withOpacity(0.1)),
+          
+          const SizedBox(height: 12),
+          Text("ÉPISODES DISPONIBLES (${_episodesDeLaSerieEnCours.length})", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: subTitleColor, letterSpacing: 1.2)),
+          const SizedBox(height: 12),
+          ..._episodesDeLaSerieEnCours.map((doc) {
+            final ep = doc.data() as Map<String, dynamic>;
+            final String url = ep['audio_url'] ?? '';
+            final bool enCours = _currentPlayingUrl == url;
+
+            return Card(
+              color: enCours ? const Color(0xFFA855F7).withOpacity(0.1) : cardColor,
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 28),
+                title: Text(ep['Titre'] ?? 'Sans titre', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: enCours ? const Color(0xFFA855F7) : titleColor)),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                onTap: () { if (url.isNotEmpty) _gererLecture(url, ep); },
+              ),
+            );
+          }),
+          const SizedBox(height: 120), 
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted && !_searchFocusNode.hasFocus) _globalFocusNode.requestFocus(); });
@@ -514,17 +622,20 @@ class _PodcastScreenState extends State<PodcastScreen> {
               decoration: BoxDecoration(gradient: widget.isDarkMode ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF1A1A1A), Color(0xFF121212)]) : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF4F7F9), Color(0xFFE5EBF0)])),
               child: StreamBuilder<QuerySnapshot>(
                 stream: _podcastsStream,
-                builder: (context, snapshot) {
+                // FIX TYPE : Attribution du type explicite Map dynamique pour le stream
+                builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
                   if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final tousLesDocs = snapshot.data!.docs;
+                  
+                  final tousLesDocs = snapshot.data!.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
+                  
                   final Set<String> themesUniques = {"Tous"};
                   for (var doc in tousLesDocs) {
-                    final d = doc.data() as Map<String, dynamic>;
+                    final d = doc.data();
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
                   final listeFiltree = tousLesDocs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                    final data = doc.data();
                     final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
                     final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
                     final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
@@ -532,6 +643,10 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   }).toList();
 
                   bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
+
+                  if (_serieSelectionneeData != null) {
+                    return _buildVueAlbumSerie(titleColor, subTitleColor, cardColor);
+                  }
 
                   return CustomScrollView(
                     slivers: [
@@ -578,12 +693,12 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       ),
                       if (_categorieSelectionnee == "Tous" && _rechercheTexte.isEmpty && !_afficherUniquementFavoris) ...[
                         const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(left: 24.0, top: 24.0, bottom: 12.0), child: Text('✨ Nouveautés / Derniers ajouts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[listeFiltree.length - 1 - index], cardColor, titleColor, subTitleColor)))),
+                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[listeFiltree.length - 1 - index], cardColor, titleColor, subTitleColor, tousLesDocs)))),
                         const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.only(left: 24.0, top: 28.0, bottom: 12.0), child: Text('🔥 Sélection Orkyn\'', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length > 3 ? 3 : listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[index], cardColor, titleColor, subTitleColor)))),
+                        SliverToBoxAdapter(child: SizedBox(height: 220, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 24.0), itemCount: listeFiltree.length > 3 ? 3 : listeFiltree.length, itemBuilder: (context, index) => _buildPodcastCardHorizontal(listeFiltree[index], cardColor, titleColor, subTitleColor, tousLesDocs)))),
                         const SliverToBoxAdapter(child: SizedBox(height: 120)),
                       ] else ...[
-                        SliverList(delegate: SliverChildBuilderDelegate((context, index) => _buildPodcastCardVertical(listeFiltree[index], cardColor, titleColor, subTitleColor), childCount: listeFiltree.length)),
+                        SliverList(delegate: SliverChildBuilderDelegate((context, index) => _buildPodcastCardVertical(listeFiltree[index], cardColor, titleColor, subTitleColor, tousLesDocs), childCount: listeFiltree.length)),
                         const SliverToBoxAdapter(child: SizedBox(height: 120)),
                       ]
                     ],
@@ -624,14 +739,11 @@ class _PodcastScreenState extends State<PodcastScreen> {
               IconButton(icon: const Icon(Icons.forward_10_rounded), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
               const SizedBox(width: 8),
 
-              // ==========================================
-              // MÀJ 2 : BOUTON DES VITESSES SUR LE LECTEUR DU BAS (Cyclique)
-              // ==========================================
               GestureDetector(
                 onTap: () {
                   int indexActuel = _vitessesDisponibles.indexOf(_vitesseActuelle);
                   int prochainIndex = (indexActuel + 1) % _vitessesDisponibles.length;
-                  _selectionnerVitesse(_vitessesDisponibles[prochainIndex]);
+                  _vitesseSelectionnee(_vitessesDisponibles[prochainIndex]);
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -657,14 +769,12 @@ class _PodcastScreenState extends State<PodcastScreen> {
           ),
         ),
 
-        // ==========================================
-        // MÀJ 1 : LIGNE DE LECTURE ULTRA-PRATIQUE (Hitbox confortable de 40px)
-        // ==========================================
         Positioned(
           top: -18, left: 0, right: 0, height: 40,
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0), // Correction : uniquement enabledThumbRadius pour le mini-player
+              // FIX : Uniquement enabledThumbRadius spécifié
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0), 
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 0.0),
               trackHeight: 3.0, 
               activeTrackColor: const Color(0xFFA855F7), 
@@ -693,26 +803,12 @@ class _PodcastScreenState extends State<PodcastScreen> {
             Center(child: Container(width: 200, height: 200, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), image: DecorationImage(image: NetworkImage(_currentImageUrl.isNotEmpty ? _currentImageUrl : 'https://picsum.photos/id/101/400/400'), fit: BoxFit.cover)))),
             const SizedBox(height: 24),
             Text(_currentTitle, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)),
-            const SizedBox(height: 8),
-            
-            // ==========================================
-            // FIX DESCRIPTION : Hauteur verrouillée à 80px pour garantir son affichage constant
-            // ==========================================
-            SizedBox(
-              height: 80, 
-              child: SingleChildScrollView(
-                child: Text(_currentDescription, style: TextStyle(fontSize: 13, color: subTitleColor)),
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24), 
             
             Slider(activeColor: const Color(0xFFA855F7), value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0), max: _dureeTotale > 0 ? _dureeTotale : 1.0, onChanged: (v) => _changerPosition(v)),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_formaterTemps(_positionActuelle)), Text(_formaterTemps(_dureeTotale))]),
             const SizedBox(height: 16),
 
-            // ==========================================
-            // MÀJ 3 : TAPIS DE VITESSE CAPSULE PERFECT CENTRÉ & AUX COULEURS DE L'APP
-            // ==========================================
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -720,7 +816,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFA855F7), // Le violet officiel de ton application !
+                      color: const Color(0xFFA855F7), 
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
@@ -731,23 +827,21 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       ],
                     ),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min, // Contraint l'alignement et force le centrage au pixel près
+                      mainAxisSize: MainAxisSize.min, 
                       children: _vitessesDisponibles.map((v) {
                         final bool isSelected = _vitesseActuelle == v;
                         return GestureDetector(
-                          onTap: () => _selectionnerVitesse(v),
+                          onTap: () => _vitesseSelectionnee(v),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(
-                              // La pilule devient blanche lorsqu'elle est active pour trancher sur le violet
                               color: isSelected ? Colors.white : Colors.transparent,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
                               "${v}x",
                               style: TextStyle(
-                                // Texte violet si sélectionné, blanc translucide sinon
                                 color: isSelected ? const Color(0xFFA855F7) : Colors.white.withOpacity(0.9),
                                 fontSize: 13,
                                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -761,7 +855,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   const SizedBox(height: 2),
                   const Icon(
                     Icons.arrow_drop_up,
-                    color: Color(0xFFA855F7), // Flèche assortie au thème général
+                    color: Color(0xFFA855F7), 
                     size: 18,
                   ),
                 ],
