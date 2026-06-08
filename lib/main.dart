@@ -299,20 +299,20 @@ class _PodcastScreenState extends State<PodcastScreen> {
       }
 
       // =======================================================
-      // ALGORITHME DE TRI NUMÉRIQUE STRICT PAR FIN DE TITRE (Partie X)
+      // ALGORITHME CORRIGÉ : Extraction numérique Dart native stricte
       // =======================================================
       listeChapitres.sort((a, b) {
         final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         
-        // Fonction interne pour extraire le dernier chiffre du titre
         int extraireNumeroPartie(String titreComplet) {
-          final RegExp regChiffre = RegExp(r'\d+$'); // Cherche le nombre à la toute fin du texte
-          final match = regChiffre.search(titreComplet.trim());
+          final RegExp regChiffre = RegExp(r'\d+$'); 
+          // FIX : Utilisation de firstMatch au lieu de search
+          final match = regChiffre.firstMatch(titreComplet.trim());
           if (match != null) {
             return int.tryParse(match.group(0) ?? '0') ?? 0;
           }
-          return 0; // Retourne 0 si aucun chiffre n'est détecté
+          return 0; 
         }
 
         return extraireNumeroPartie(tA).compareTo(extraireNumeroPartie(tB));
