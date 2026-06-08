@@ -221,7 +221,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
   bool _isPlayerExpanded = false;
   final List<double> _vitessesDisponibles = const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
-  // Gestion de la vue Album de la série
+  // Vue Album
   Map<String, dynamic>? _serieSelectionneeData;
   List<DocumentSnapshot> _chapitresDeLaSerie = [];
   DocumentSnapshot? _grosPodcastIntegral;
@@ -278,31 +278,28 @@ class _PodcastScreenState extends State<PodcastScreen> {
     final String titre = (podcastData['Titre'] ?? '').toString();
     final String audioUrl = podcastData['audio_url'] ?? '';
 
-    // SI LE TITRE CONTIENT "[Série]", ALORS C'EST LE GROS PODCAST DE "MANAGEMENT"
     if (titre.contains('[Série]')) {
       final String themeSerie = podcastData['Theme'] ?? 'management';
       
-      // Récupérer l'intégralité des podcasts rattachés à ce thème
       final List<DocumentSnapshot> tousLesMorceaux = tousLesPodcasts.where((doc) {
         final d = doc.data() as Map<String, dynamic>;
         return (d['Theme'] ?? '') == themeSerie;
       }).toList();
 
-      // Isoler le gros podcast complet pour la tête d'affiche
       DocumentSnapshot? integralDoc;
-      final List<DocumentSnapshot> listeChapitres Uniquement = [];
+      final List<DocumentSnapshot> listeChapitres = [];
 
       for (var doc in tousLesMorceaux) {
         final d = doc.data() as Map<String, dynamic>;
         if (d['Titre'].toString().contains('[Série]')) {
           integralDoc = doc;
         } else {
-          listeChapitresUniquement.add(doc);
+          listeChapitres.add(doc);
         }
       }
 
-      // Trier les chapitres par ordre chronologique de publication (date_ajout)
-      listeChapitresUniquement.sort((a, b) {
+      // FIX SYNTAXE LIGNE 126 : Tri chronologique propre sans espace dans la variable
+      listeChapitres.sort((a, b) {
         final dA = (a.data() as Map<String, dynamic>)['date_ajout'] as Timestamp?;
         final dB = (b.data() as Map<String, dynamic>)['date_ajout'] as Timestamp?;
         if (dA == null || dB == null) return 0;
@@ -312,10 +309,9 @@ class _PodcastScreenState extends State<PodcastScreen> {
       setState(() {
         _serieSelectionneeData = podcastData;
         _grosPodcastIntegral = integralDoc;
-        _chapitresDeLaSerie = listeChapitresUniquement;
+        _chapitresDeLaSerie = listeChapitres;
       });
     } else {
-      // PODCAST NORMAL SANS ALBUM : LECTURE DIRECTE
       if (audioUrl.isNotEmpty) _gererLecture(audioUrl, podcastData);
     }
   }
@@ -358,7 +354,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
       });
       _audioElement?.onEnded.listen((event) {
         if (mounted) { 
-          // AUTO-PLAY INTELLIGENT CHRONOLOGIQUE DES CHAPITRES
           int indexActuel = _chapitresDeLaSerie.indexWhere((doc) {
             final data = doc.data() as Map<String, dynamic>;
             return (data['audio_url'] ?? '') == _currentPlayingUrl;
@@ -613,7 +608,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
           const SizedBox(height: 20),
           Center(child: Text(titreSerie.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
           const SizedBox(height: 8),
-          // La description générale ne s'affiche qu'ici en haut
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(descriptionSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.4)),
@@ -623,9 +617,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
           Divider(color: Colors.grey.withOpacity(0.1)),
           const SizedBox(height: 12),
 
-          // ==========================================
-          // EN-TÊTE : LE GROS PODCAST INTÉGRAL EN TÊTE D'AFFICHE
-          // ==========================================
           if (_grosPodcastIntegral != null) ...[
             Text("ÉMISSION COMPLÈTE (INTÉGRALE)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: subTitleColor, letterSpacing: 1.2)),
             const SizedBox(height: 10),
