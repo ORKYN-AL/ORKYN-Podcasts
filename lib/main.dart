@@ -12,7 +12,7 @@ void main() async {
       apiKey: "AIzaSyD0sExmKe5-NTzfdW-dAnmGvB9kGQWp8rE",
       authDomain: "al-podcasts.firebaseapp.com",
       projectId: "al-podcasts",
-      storageBucket: "al-podcasts.firebasestorage.app",
+      storageBucket: "al-podcasts.firebasestorage.app", // Initialisation directe et robuste pour Flutter Web 2026
       messagingSenderId: "1084059668245",
       appId: "1:1084059668245:web:22025c16163513148ae31c",
     ),
