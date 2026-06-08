@@ -298,16 +298,12 @@ class _PodcastScreenState extends State<PodcastScreen> {
         }
       }
 
-      // =======================================================
-      // ALGORITHME CORRIGÉ : Extraction numérique Dart native stricte
-      // =======================================================
       listeChapitres.sort((a, b) {
         final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         
         int extraireNumeroPartie(String titreComplet) {
           final RegExp regChiffre = RegExp(r'\d+$'); 
-          // FIX : Utilisation de firstMatch au lieu de search
           final match = regChiffre.firstMatch(titreComplet.trim());
           if (match != null) {
             return int.tryParse(match.group(0) ?? '0') ?? 0;
@@ -705,12 +701,21 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
+                  // ==========================================
+                  // EXCLUSION : Filtrer et masquer les 9 chapitres de la page d'accueil
+                  // ==========================================
                   final listeFiltree = tousLesDocs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
+                    final String titre = (data['Titre'] ?? '').toString();
+                    
+                    // RÈGLE : Si le titre contient "EM Partie", on le cache de la page d'accueil
+                    final bool estUnChapitreA_Masquer = titre.contains('EM Partie');
+
                     final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
                     final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
                     final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
-                    return correspondRecherche && correspondCategorie && correspondFavoris;
+                    
+                    return !estUnChapitreA_Masquer && correspondRecherche && correspondCategorie && correspondFavoris;
                   }).toList();
 
                   bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
