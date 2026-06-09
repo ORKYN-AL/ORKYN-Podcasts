@@ -219,6 +219,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   bool _isPlayerExpanded = false;
   final List<double> _vitessesDisponibles = const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+  bool _lienPartageTraite = false;
 
   // Vue Album
   Map<String, dynamic>? _serieSelectionneeData;
@@ -273,6 +274,44 @@ class _PodcastScreenState extends State<PodcastScreen> {
     if (_audioElement != null) { _audioElement!.playbackRate = _vitesseActuelle; }
   }
 
+  // Système de partage d'URL par ID unique
+  void _partagerPodcast(String idDocument, String titre) {
+    final String urlActuelle = html.window.location.href.split('?').first;
+    final String lienDePartage = "$urlActuelle?id=$idDocument";
+    
+    html.window.navigator.clipboard?.writeText(lienDePartage);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Lien copié pour : $titre 🔗"),
+        backgroundColor: const Color(0xFF0EA5E9),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // Intercepter l'URL pour router directement vers le bon podcast
+  void _verifierLienDePartage(List<QueryDocumentSnapshot> tousLesPodcasts) {
+    if (_lienPartageTraite) return;
+    
+    final uri = Uri.parse(html.window.location.href);
+    final String? idPartage = uri.queryParameters['id'];
+
+    if (idPartage != null && idPartage.isNotEmpty) {
+      _lienPartageTraite = true;
+      try {
+        final docTrouve = tousLesPodcasts.firstWhere((doc) => doc.id == idPartage);
+        final data = docTrouve.data() as Map<String, dynamic>;
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _clicSurPodcast(data, tousLesPodcasts);
+        });
+      } catch (e) {
+        // ID Inexistant
+      }
+    }
+  }
+
   void _clicSurPodcast(Map<String, dynamic> podcastData, List<QueryDocumentSnapshot> tousLesPodcasts) {
     final String titre = (podcastData['Titre'] ?? '').toString();
     final String audioUrl = podcastData['audio_url'] ?? '';
@@ -297,7 +336,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
         }
       }
 
-      // Tri de sécurité numérique robuste pour l'enchaînement de la Partie 1 à la Partie 9
+      // Tri intelligent et incassable Partie X
       listeChapitres.sort((a, b) {
         final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
@@ -503,6 +542,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 ),
                 Positioned(top: 8, right: 8, child: GestureDetector(onTap: () => _basculerLike(doc.id), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle), child: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isLiked ? Colors.redAccent : Colors.white, size: 18)))),
                 Positioned(top: 8, left: 8, child: GestureDetector(onTap: () => _demanderCodeAdmin(docAModifier: doc), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.settings_rounded, color: Colors.white, size: 18)))),
+                Positioned(bottom: 8, right: 8, child: GestureDetector(onTap: () => _partagerPodcast(doc.id, podcast['Titre'] ?? 'Sans titre'), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.share_rounded, color: Colors.white, size: 16)))),
               ],
             ),
             Padding(
@@ -564,9 +604,11 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(child: Text(podcast['Titre'] ?? 'Sans titre', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: titleColor))),
-                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 20), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
-                        const SizedBox(width: 8),
-                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded), color: isLiked ? Colors.redAccent : Colors.grey, iconSize: 22, onPressed: () => _basculerLike(doc.id)),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 18), onPressed: () => _partagerPodcast(doc.id, podcast['Titre'] ?? 'Sans titre')),
+                        const SizedBox(width: 4),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
+                        const SizedBox(width: 4),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded), color: isLiked ? Colors.redAccent : Colors.grey, iconSize: 20, onPressed: () => _basculerLike(doc.id)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -648,8 +690,9 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 20), onPressed: () => _demanderCodeAdmin(docAModifier: _grosPodcastIntegral)),
-                      IconButton(icon: Icon(isGrosLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isGrosLiked ? Colors.redAccent : Colors.grey, size: 22), onPressed: () => _basculerLike(_grosPodcastIntegral!.id)),
+                      IconButton(icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 18), onPressed: () => _partagerPodcast(_grosPodcastIntegral!.id, data['Titre'] ?? 'Sans titre')),
+                      IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: _grosPodcastIntegral)),
+                      IconButton(icon: Icon(isGrosLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isGrosLiked ? Colors.redAccent : Colors.grey, size: 20), onPressed: () => _basculerLike(_grosPodcastIntegral!.id)),
                     ],
                   ),
                 ),
@@ -679,13 +722,14 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
-                    IconButton(icon: Icon(isChapLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isChapLiked ? Colors.redAccent : Colors.grey, size: 20), onPressed: () => _basculerLike(doc.id)),
+                    IconButton(icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 16), onPressed: () => _partagerPodcast(doc.id, ep['Titre'] ?? 'Sans titre')),
+                    IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 16), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
+                    IconButton(icon: Icon(isChapLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isChapLiked ? Colors.redAccent : Colors.grey, size: 18), onPressed: () => _basculerLike(doc.id)),
                   ],
                 ),
               ),
             );
-          }), // FIX SYNTAXE LIGNE 691 : Accolade fermante insérée proprement pour mapper la collection
+          }).toList(), // SYNTAXE LIGNE 731 PARFAITEMENT RECONSTITUÉE ICI
           const SizedBox(height: 120), 
         ],
       ),
@@ -715,13 +759,16 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   
                   final tousLesDocs = snapshot.data!.docs;
                   
+                  // ROUTAGE LIENS DIRECTS DE PARTAGE
+                  _verifierLienDePartage(tousLesDocs);
+
                   final Set<String> themesUniques = {"Tous"};
                   for (var doc in tousLesDocs) {
                     final d = doc.data() as Map<String, dynamic>;
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
-                  // Masquer de l'accueil tout ce qui contient le tag "Partie"
+                  // Cacher les chapitres de l'accueil
                   final listeFiltree = tousLesDocs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final String titre = (data['Titre'] ?? '').toString();
@@ -831,7 +878,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
               IconButton(icon: Icon(_isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, size: 38, color: const Color(0xFFA855F7)), onPressed: () => _gererLecture(_currentPlayingUrl!)),
               IconButton(icon: const Icon(Icons.forward_10_rounded), onPressed: () => _changerPosition(_positionActuelle + 10.0)),
               const SizedBox(width: 8),
-
               GestureDetector(
                 onTap: () {
                   int indexActuel = _vitessesDisponibles.indexOf(_vitesseActuelle);
@@ -840,44 +886,18 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E222B), 
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        "${_vitesseActuelle}x",
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(Icons.speed, color: Color(0xFF9D57FF), size: 12),
-                    ],
-                  ),
+                  decoration: BoxDecoration(color: const Color(0xFF1E222B), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [Text("${_vitesseActuelle}x", style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)), const SizedBox(width: 2), const Icon(Icons.speed, color: Color(0xFF9D57FF), size: 12)]),
                 ),
               ),
             ],
           ),
         ),
-
         Positioned(
           top: -18, left: 0, right: 0, height: 40,
           child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0), 
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 0.0),
-              trackHeight: 3.0, 
-              activeTrackColor: const Color(0xFFA855F7), 
-              inactiveTrackColor: Colors.grey.withOpacity(0.2),
-            ),
-            child: Slider(
-              min: 0.0,
-              max: _dureeTotale > 0 ? _dureeTotale : 1.0,
-              value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0),
-              onChanged: (v) => _changerPosition(v),
-            ),
+            data: SliderTheme.of(context).copyWith(thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0.0), overlayShape: const RoundSliderOverlayShape(overlayRadius: 0.0), trackHeight: 3.0, activeTrackColor: const Color(0xFFA855F7), inactiveTrackColor: Colors.grey.withOpacity(0.2)),
+            child: Slider(min: 0.0, max: _dureeTotale > 0 ? _dureeTotale : 1.0, value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0), onChanged: (v) => _changerPosition(v)),
           ),
         ),
       ],
@@ -896,43 +916,23 @@ class _PodcastScreenState extends State<PodcastScreen> {
             const SizedBox(height: 24),
             Text(_currentTitle, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: titleColor)),
             const SizedBox(height: 24), 
-            
             Slider(activeColor: const Color(0xFFA855F7), value: _positionActuelle.clamp(0.0, _dureeTotale > 0 ? _dureeTotale : 1.0), max: _dureeTotale > 0 ? _dureeTotale : 1.0, onChanged: (v) => _changerPosition(v)),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(_formaterTemps(_positionActuelle)), Text(_formaterTemps(_dureeTotale))]),
             const SizedBox(height: 16),
-
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFA855F7), 
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFFA855F7), borderRadius: BorderRadius.circular(30)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min, 
                       children: _vitessesDisponibles.map((v) {
                         final bool isSelected = _vitesseActuelle == v;
                         return GestureDetector(
                           onTap: () => _vitesseSelectionnee(v),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isSelected ? Colors.white : Colors.transparent,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              "${v}x",
-                              style: TextStyle(
-                                color: isSelected ? const Color(0xFFA855F7) : Colors.white.withOpacity(0.9),
-                                fontSize: 13,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          ),
+                          child: AnimatedContainer(duration: const Duration(milliseconds: 200), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(20)), child: Text("${v}x", style: TextStyle(color: isSelected ? const Color(0xFFA855F7) : Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal))),
                         );
                       }).toList(),
                     ),
@@ -941,7 +941,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
