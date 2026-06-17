@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:html' as html;
 import 'dart:convert';
 
@@ -31,13 +32,49 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   ThemeMode _themeMode = ThemeMode.light;
   bool _isAlreadyAuthenticated = false;
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
     _isAlreadyAuthenticated = html.window.localStorage['orkyn_auth'] == 'true';
+    _isAdmin = html.window.localStorage['orkyn_admin'] == 'true';
     final String? themeSauvegarde = html.window.localStorage['theme_mode'];
     _themeMode = (themeSauvegarde == 'dark') ? ThemeMode.dark : ThemeMode.light;
+    
+    // Interception automatique du lien magique s'il est présent dans l'URL
+    _verifierLienDeConnexion();
+  }
+
+  Future<void> _verifierLienDeConnexion() async {
+    final String currentUrl = html.window.location.href;
+    if (FirebaseAuth.instance.isSignInWithEmailLink(currentUrl)) {
+      String? email = html.window.localStorage['emailForSignIn'];
+      if (email != null) {
+        try {
+          UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailLink(
+            email: email,
+            emailLink: currentUrl,
+          );
+          
+          // ⚠️ METS TON E-MAIL EXACT ICI (celui de tes règles Firestore)
+          bool estAdmin = (userCredential.user?.email == "ilyan.tajmouti@orkyn.fr");
+          
+          html.window.localStorage['orkyn_auth'] = 'true';
+          html.window.localStorage['orkyn_admin'] = estAdmin ? 'true' : 'false';
+          
+          setState(() {
+            _isAlreadyAuthenticated = true;
+            _isAdmin = estAdmin;
+          });
+          
+          // Nettoyer l'URL dans la barre d'adresse pour enlever les paramètres Firebase
+          html.window.history.replaceState(null, '', html.window.location.pathname);
+        } catch (e) {
+          // Lien invalide ou expiré
+        }
+      }
+    }
   }
 
   void _changerTheme(bool passerEnSombre) {
@@ -47,8 +84,11 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _validerConnexion(bool connecte) {
-    setState(() { _isAlreadyAuthenticated = connecte; });
+  void _validerConnexion(bool connecte, bool admin) {
+    setState(() { 
+      _isAlreadyAuthenticated = connecte; 
+      _isAdmin = admin;
+    });
   }
 
   @override
@@ -70,17 +110,21 @@ class _MyAppState extends State<MyApp> {
       ),
       home: _isAlreadyAuthenticated
           ? PodcastScreen(
+              isAdmin: _isAdmin,
               isDarkMode: _themeMode == ThemeMode.dark,
               onThemeChanged: _changerTheme,
-              onLogout: () {
+              onLogout: () async {
+                await FirebaseAuth.instance.signOut();
                 html.window.localStorage.remove('orkyn_auth');
-                _validerConnexion(false);
+                html.window.localStorage.remove('orkyn_admin');
+                html.window.localStorage.remove('emailForSignIn');
+                _validerConnexion(false, false);
               },
             )
           : AuthScreen(
               isDarkMode: _themeMode == ThemeMode.dark,
               onThemeChanged: _changerTheme,
-              onLoginSuccess: () => _validerConnexion(true),
+              onLoginSuccess: (admin) => _validerConnexion(true, admin),
             ),
     );
   }
@@ -89,7 +133,7 @@ class _MyAppState extends State<MyApp> {
 class AuthScreen extends StatefulWidget {
   final bool isDarkMode;
   final Function(bool) onThemeChanged;
-  final VoidCallback onLoginSuccess;
+  final Function(bool) onLoginSuccess;
   const AuthScreen({super.key, required this.isDarkMode, required this.onThemeChanged, required this.onLoginSuccess});
 
   @override
@@ -98,31 +142,59 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
   String _message = "";
-  final String _motDePasseSecretOrkyn = "Orkyn2026!"; 
+  bool _isLoading = false;
+  bool _mailEnvoye = false;
 
-  void _connexion() {
+  void _demanderLienDeConnexion() async {
     final email = _emailController.text.trim().toLowerCase();
-    final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      setState(() { _message = "Veuillez remplir tous les champs."; });
+    if (email.isEmpty) {
+      setState(() { _message = "Veuillez entrer votre adresse e-mail."; });
       return;
     }
     if (!email.endsWith('@orkyn.fr') && !email.endsWith('@airliquide.com')) {
       setState(() { _message = "Accès refusé : adresse @orkyn.fr ou @airliquide.com requise."; });
       return;
     }
-    if (password == _motDePasseSecretOrkyn) {
-      html.window.localStorage['orkyn_auth'] = 'true';
-      if (html.window.localStorage['last_check'] == null) {
-        html.window.localStorage['last_check'] = DateTime.now().toIso8601String();
-      }
-      widget.onLoginSuccess();
-    } else {
-      setState(() { _message = "Mot de passe d'entreprise incorrect."; });
+
+    setState(() { 
+      _isLoading = true; 
+      _message = "";
+    });
+
+    try {
+      final currentUri = Uri.parse(html.window.location.href);
+      final baseUrl = '${currentUri.scheme}://${currentUri.host}${currentUri.port != 80 && currentUri.port != 443 ? ":${currentUri.port}" : ""}/';
+
+      var acs = ActionCodeSettings(
+        url: baseUrl,
+        handleCodeInApp: true,
+      );
+
+      await FirebaseAuth.instance.sendSignInLinkToEmail(
+        email: email,
+        actionCodeSettings: acs,
+      );
+
+      html.window.localStorage['emailForSignIn'] = email;
+      
+      setState(() {
+        _mailEnvoye = true;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _message = "Une erreur est survenue lors de l'envoi du mail.";
+        _isLoading = false;
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
   @override
@@ -161,25 +233,36 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
-                  TextField(
-                    controller: _emailController,
-                    style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black),
-                    decoration: InputDecoration(labelText: "Votre e-mail pro", hintText: "prenom.nom@orkyn.fr", prefixIcon: const Icon(Icons.email_rounded), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    onSubmitted: (_) => _connexion(),
-                    style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black),
-                    decoration: InputDecoration(labelText: "Mot de passe de l'application", prefixIcon: const Icon(Icons.lock_rounded), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _connexion,
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    child: const Text("Se connecter", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
+                  if (!_mailEnvoye) ...[
+                    TextField(
+                      controller: _emailController,
+                      style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black),
+                      decoration: InputDecoration(labelText: "Votre e-mail pro", hintText: "prenom.nom@orkyn.fr", prefixIcon: const Icon(Icons.email_rounded), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                      onSubmitted: (_) => _demanderLienDeConnexion(),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _demanderLienDeConnexion,
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFA855F7), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: _isLoading 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text("Recevoir mon lien de connexion", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    ),
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: const Column(
+                        children: [
+                          Icon(Icons.mark_email_read_rounded, color: Colors.green, size: 48),
+                          SizedBox(height: 12),
+                          Text("Lien envoyé !", style: TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 8),
+                          Text("Consultez votre boîte mail pro et cliquez sur le lien reçu pour vous connecter.", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, height: 1.4)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -191,10 +274,11 @@ class _AuthScreenState extends State<AuthScreen> {
 }
 
 class PodcastScreen extends StatefulWidget {
+  final bool isAdmin;
   final bool isDarkMode;
   final Function(bool) onThemeChanged;
   final VoidCallback onLogout;
-  const PodcastScreen({super.key, required this.isDarkMode, required this.onThemeChanged, required this.onLogout});
+  const PodcastScreen({super.key, required this.isAdmin, required this.isDarkMode, required this.onThemeChanged, required this.onLogout});
 
   @override
   State<PodcastScreen> createState() => _PodcastScreenState();
@@ -221,7 +305,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
   final List<double> _vitessesDisponibles = const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
   bool _lienPartageTraite = false;
 
-  // Vue Album
   Map<String, dynamic>? _serieSelectionneeData;
   List<DocumentSnapshot> _chapitresDeLaSerie = [];
   DocumentSnapshot? _grosPodcastIntegral;
@@ -274,41 +357,24 @@ class _PodcastScreenState extends State<PodcastScreen> {
     if (_audioElement != null) { _audioElement!.playbackRate = _vitesseActuelle; }
   }
 
-  // Système de partage d'URL par ID unique
   void _partagerPodcast(String idDocument, String titre) {
     final String urlActuelle = html.window.location.href.split('?').first;
     final String lienDePartage = "$urlActuelle?id=$idDocument";
-    
     html.window.navigator.clipboard?.writeText(lienDePartage);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Lien copié pour : $titre 🔗"),
-        backgroundColor: const Color(0xFF0EA5E9),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Lien copié pour : $titre 🔗"), backgroundColor: const Color(0xFF0EA5E9), duration: const Duration(seconds: 2)));
   }
 
-  // Intercepter l'URL pour router directement vers le bon podcast
   void _verifierLienDePartage(List<QueryDocumentSnapshot> tousLesPodcasts) {
     if (_lienPartageTraite) return;
-    
     final uri = Uri.parse(html.window.location.href);
     final String? idPartage = uri.queryParameters['id'];
-
     if (idPartage != null && idPartage.isNotEmpty) {
       _lienPartageTraite = true;
       try {
         final docTrouve = tousLesPodcasts.firstWhere((doc) => doc.id == idPartage);
         final data = docTrouve.data() as Map<String, dynamic>;
-        
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _clicSurPodcast(data, tousLesPodcasts);
-        });
-      } catch (e) {
-        // ID Inexistant
-      }
+        WidgetsBinding.instance.addPostFrameCallback((_) { _clicSurPodcast(data, tousLesPodcasts); });
+      } catch (e) {}
     }
   }
 
@@ -318,47 +384,23 @@ class _PodcastScreenState extends State<PodcastScreen> {
 
     if (titre.contains('[Série]')) {
       final String themeSerie = podcastData['Theme'] ?? 'management';
-      
-      final List<DocumentSnapshot> tousLesMorceaux = tousLesPodcasts.where((doc) {
-        final d = doc.data() as Map<String, dynamic>;
-        return (d['Theme'] ?? '') == themeSerie;
-      }).toList();
-
+      final List<DocumentSnapshot> tousLesMorceaux = tousLesPodcasts.where((doc) => (doc.data() as Map<String, dynamic>)['Theme'] == themeSerie).toList();
       DocumentSnapshot? integralDoc;
       final List<DocumentSnapshot> listeChapitres = [];
 
       for (var doc in tousLesMorceaux) {
         final d = doc.data() as Map<String, dynamic>;
-        if (d['Titre'].toString().contains('[Série]')) {
-          integralDoc = doc;
-        } else {
-          listeChapitres.add(doc);
-        }
+        if (d['Titre'].toString().contains('[Série]')) { integralDoc = doc; } else { listeChapitres.add(doc); }
       }
 
-      // Tri intelligent et incassable Partie X
       listeChapitres.sort((a, b) {
         final tA = (a.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
         final tB = (b.data() as Map<String, dynamic>)['Titre']?.toString() ?? '';
-        
-        int extraireNumeroPartie(String titreComplet) {
-          if (titreComplet.contains('Partie')) {
-            final partiesDuTexte = titreComplet.split('Partie');
-            if (partiesDuTexte.length > 1) {
-              return int.tryParse(partiesDuTexte.last.trim()) ?? 0;
-            }
-          }
-          return 0;
-        }
-
-        return extraireNumeroPartie(tA).compareTo(extraireNumeroPartie(tB));
+        int numP(String t) => t.contains('Partie') ? (int.tryParse(t.split('Partie').last.trim()) ?? 0) : 0;
+        return numP(tA).compareTo(numP(tB));
       });
 
-      setState(() {
-        _serieSelectionneeData = podcastData;
-        _grosPodcastIntegral = integralDoc;
-        _chapitresDeLaSerie = listeChapitres;
-      });
+      setState(() { _serieSelectionneeData = podcastData; _grosPodcastIntegral = integralDoc; _chapitresDeLaSerie = listeChapitres; });
     } else {
       if (audioUrl.isNotEmpty) _gererLecture(audioUrl, podcastData);
     }
@@ -368,25 +410,22 @@ class _PodcastScreenState extends State<PodcastScreen> {
     if (_isPlaying && _currentPlayingUrl == url) {
       _audioElement?.pause();
       setState(() { _isPlaying = false; });
-    } 
-    else if (!_isPlaying && _currentPlayingUrl == url && _audioElement != null) {
+    } else if (!_isPlaying && _currentPlayingUrl == url && _audioElement != null) {
       _audioElement?.play();
-      if (_audioElement != null) { _audioElement!.playbackRate = _vitesseActuelle; }
+      _audioElement!.playbackRate = _vitesseActuelle;
       setState(() { _isPlaying = true; });
-    } 
-    else {
+    } else {
       _audioElement?.pause();
       _audioElement = html.AudioElement(url)..play();
       _audioElement!.playbackRate = _vitesseActuelle;
-      
       setState(() {
         _isPlaying = true;
         _currentPlayingUrl = url;
         _positionActuelle = 0.0;
         _dureeTotale = 0.0;
         if (data != null) {
-          _currentTitle = data['Titre'] ?? data['titre'] ?? 'Sans titre';
-          _currentImageUrl = data['image_url'] ?? data['imageUrl'] ?? '';
+          _currentTitle = data['Titre'] ?? 'Sans titre';
+          _currentImageUrl = data['image_url'] ?? '';
         }
       });
 
@@ -401,19 +440,10 @@ class _PodcastScreenState extends State<PodcastScreen> {
       });
       _audioElement?.onEnded.listen((event) {
         if (mounted) { 
-          int indexActuel = _chapitresDeLaSerie.indexWhere((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return (data['audio_url'] ?? '') == _currentPlayingUrl;
-          });
-
-          if (indexActuel != -1 && indexActuel + 1 < _chapitresDeLaSerie.length) {
-            final prochainDoc = _chapitresDeLaSerie[indexActuel + 1];
-            final prochainData = prochainDoc.data() as Map<String, dynamic>;
-            final prochaineUrl = prochainData['audio_url'] ?? '';
-            if (prochaineUrl.isNotEmpty) {
-              _gererLecture(prochaineUrl, prochainData);
-              return;
-            }
+          int idx = _chapitresDeLaSerie.indexWhere((doc) => ((doc.data() as Map<String, dynamic>)['audio_url'] ?? '') == _currentPlayingUrl);
+          if (idx != -1 && idx + 1 < _chapitresDeLaSerie.length) {
+            final nxtData = _chapitresDeLaSerie[idx + 1].data() as Map<String, dynamic>;
+            if ((nxtData['audio_url'] ?? '').isNotEmpty) { _gererLecture(nxtData['audio_url'], nxtData); return; }
           }
           setState(() { _isPlaying = false; _positionActuelle = 0.0; }); 
         }
@@ -423,49 +453,23 @@ class _PodcastScreenState extends State<PodcastScreen> {
 
   void _changerPosition(double secondes) {
     if (_audioElement != null) {
-      final nouvellePosition = secondes.clamp(0.0, _dureeTotale > 0.0 ? _dureeTotale : 1.0);
-      _audioElement!.currentTime = nouvellePosition;
-      setState(() { _positionActuelle = nouvellePosition; });
+      final nPos = secondes.clamp(0.0, _dureeTotale > 0.0 ? _dureeTotale : 1.0);
+      _audioElement!.currentTime = nPos;
+      setState(() { _positionActuelle = nPos; });
     }
   }
 
   void _gererClavier(KeyEvent event) {
     if (_searchFocusNode.hasFocus) return;
     if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.space) {
-        if (_currentPlayingUrl != null) _gererLecture(_currentPlayingUrl!);
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-        _changerPosition(_positionActuelle + 10.0);
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        _changerPosition(_positionActuelle - 10.0);
-      }
+      if (event.logicalKey == LogicalKeyboardKey.space) { if (_currentPlayingUrl != null) _gererLecture(_currentPlayingUrl!); }
+      else if (event.logicalKey == LogicalKeyboardKey.arrowRight) { _changerPosition(_positionActuelle + 10.0); }
+      else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) { _changerPosition(_positionActuelle - 10.0); }
     }
   }
 
-  void _demanderCodeAdmin({DocumentSnapshot? docAModifier}) {
-    final TextEditingController codeController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: widget.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-        title: Text(docAModifier == null ? "🔑 Espace Publication Admin" : "✏️ Mode Édition Admin"),
-        content: TextField(controller: codeController, obscureText: true, decoration: const InputDecoration(labelText: "Code d'accès secret Admin")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          ElevatedButton(
-            onPressed: () {
-              if (codeController.text == "AdminOrkyn2026") {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => AdminUploadScreen(isDarkMode: widget.isDarkMode, podcastDoc: docAModifier)));
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Code Admin incorrect ❌")));
-              }
-            },
-            child: const Text("Valider"),
-          )
-        ],
-      ),
-    );
+  void _ouvrirOutilAdmin({DocumentSnapshot? docAModifier}) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => AdminUploadScreen(isDarkMode: widget.isDarkMode, podcastDoc: docAModifier)));
   }
 
   void _ouvrirNotifications(List<QueryDocumentSnapshot> podcasts) {
@@ -528,20 +532,13 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     decoration: BoxDecoration(color: const Color(0xFF1E293B), image: DecorationImage(image: NetworkImage(imageUrl.isNotEmpty ? imageUrl : 'https://picsum.photos/id/101/300/300'), fit: BoxFit.cover)),
                     child: Container(
                       color: _currentPlayingUrl == audioUrl && _isPlaying ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.1),
-                      child: Center(
-                        child: Icon(
-                          estUneSerie 
-                              ? Icons.album_rounded 
-                              : (_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded), 
-                          color: Colors.white, 
-                          size: 45
-                        )
-                      ),
+                      child: Center(child: Icon(estUneSerie ? Icons.album_rounded : (_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded), color: Colors.white, size: 45)),
                     ),
                   ),
                 ),
                 Positioned(top: 8, right: 8, child: GestureDetector(onTap: () => _basculerLike(doc.id), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle), child: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isLiked ? Colors.redAccent : Colors.white, size: 18)))),
-                Positioned(top: 8, left: 8, child: GestureDetector(onTap: () => _demanderCodeAdmin(docAModifier: doc), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.settings_rounded, color: Colors.white, size: 18)))),
+                if (widget.isAdmin)
+                  Positioned(top: 8, left: 8, child: GestureDetector(onTap: () => _ouvrirOutilAdmin(docAModifier: doc), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.settings_rounded, color: Colors.white, size: 18)))),
                 Positioned(bottom: 8, right: 8, child: GestureDetector(onTap: () => _partagerPodcast(doc.id, podcast['Titre'] ?? 'Sans titre'), child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.share_rounded, color: Colors.white, size: 16)))),
               ],
             ),
@@ -562,7 +559,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor, List<QueryDocumentSnapshot> tousLesPodcasts) {
+  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, SubTitleColor, List<QueryDocumentSnapshot> tousLesPodcasts) {
     final Map<String, dynamic> podcast = doc.data() as Map<String, dynamic>;
     final String audioUrl = podcast['audio_url'] ?? '';
     final String imageUrl = podcast['image_url'] ?? '';
@@ -585,13 +582,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                   decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), image: DecorationImage(image: NetworkImage(imageUrl.isNotEmpty ? imageUrl : 'https://picsum.photos/id/101/300/300'), fit: BoxFit.cover)),
                   child: Container(
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: _currentPlayingUrl == audioUrl && _isPlaying ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.1)),
-                    child: Icon(
-                      estUneSerie 
-                          ? Icons.album_rounded 
-                          : (_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded), 
-                      color: Colors.white, 
-                      size: 36
-                    ),
+                    child: Icon(estUneSerie ? Icons.album_rounded : (_currentPlayingUrl == audioUrl && _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded), color: Colors.white, size: 36),
                   ),
                 ),
               ),
@@ -605,8 +596,10 @@ class _PodcastScreenState extends State<PodcastScreen> {
                       children: [
                         Expanded(child: Text(podcast['Titre'] ?? 'Sans titre', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: titleColor))),
                         IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 18), onPressed: () => _partagerPodcast(doc.id, podcast['Titre'] ?? 'Sans titre')),
-                        const SizedBox(width: 4),
-                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
+                        if (widget.isAdmin) ...[
+                          const SizedBox(width: 4),
+                          IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _ouvrirOutilAdmin(docAModifier: doc)),
+                        ],
                         const SizedBox(width: 4),
                         IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: Icon(isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded), color: isLiked ? Colors.redAccent : Colors.grey, iconSize: 20, onPressed: () => _basculerLike(doc.id)),
                       ],
@@ -614,7 +607,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     const SizedBox(height: 4),
                     Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: widget.isDarkMode ? const Color(0xFF2E1A47) : const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(20)), child: Text(podcast['Theme'] ?? 'Général', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.w500))),
                     const SizedBox(height: 8),
-                    Text(podcast['Description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.2)),
+                    Text(podcast['Description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: SubTitleColor, height: 1.2)),
                   ],
                 ),
               ),
@@ -627,7 +620,6 @@ class _PodcastScreenState extends State<PodcastScreen> {
 
   Widget _buildVueAlbumSerie(Color titleColor, Color subTitleColor, Color cardColor) {
     final String imageSerie = _serieSelectionneeData?['image_url'] ?? '';
-    final String titreSerie = "MANAGEMENT";
     final String descriptionSerie = _serieSelectionneeData?['Description'] ?? '';
 
     return Scaffold(
@@ -635,11 +627,8 @@ class _PodcastScreenState extends State<PodcastScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, size: 28),
-          onPressed: () => setState(() => _serieSelectionneeData = null), 
-        ),
-        title: Text(titreSerie, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        leading: IconButton(icon: const Icon(Icons.arrow_back_rounded, size: 28), onPressed: () => setState(() => _serieSelectionneeData = null)),
+        title: const Text("MANAGEMENT", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         centerTitle: true,
       ),
       body: ListView(
@@ -656,14 +645,10 @@ class _PodcastScreenState extends State<PodcastScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Center(child: Text(titreSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
+          Center(child: Text("MANAGEMENT", textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: titleColor))),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(descriptionSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.4)),
-          ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16.0), child: Text(descriptionSerie, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.4))),
           const SizedBox(height: 24),
-          
           Divider(color: Colors.grey.withOpacity(0.1)),
           const SizedBox(height: 12),
 
@@ -681,17 +666,14 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Color(0xFFA855F7), width: 1)),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: IconButton(
-                    icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 36),
-                    onPressed: () { if (url.isNotEmpty) _gererLecture(url, data); },
-                  ),
+                  leading: IconButton(icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 36), onPressed: () { if (url.isNotEmpty) _gererLecture(url, data); }),
                   title: Text(data['Titre'] ?? 'Podcast Intégral', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: enCours ? const Color(0xFFA855F7) : titleColor)),
                   subtitle: const Text("Écouter la slide en entier", style: TextStyle(fontSize: 12)),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 18), onPressed: () => _partagerPodcast(_grosPodcastIntegral!.id, data['Titre'] ?? 'Sans titre')),
-                      IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _demanderCodeAdmin(docAModifier: _grosPodcastIntegral)),
+                      if (widget.isAdmin) IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 18), onPressed: () => _ouvrirOutilAdmin(docAModifier: _grosPodcastIntegral)),
                       IconButton(icon: Icon(isGrosLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isGrosLiked ? Colors.redAccent : Colors.grey, size: 20), onPressed: () => _basculerLike(_grosPodcastIntegral!.id)),
                     ],
                   ),
@@ -714,22 +696,19 @@ class _PodcastScreenState extends State<PodcastScreen> {
               margin: const EdgeInsets.symmetric(vertical: 6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: ListTile(
-                leading: IconButton(
-                  icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 28),
-                  onPressed: () { if (url.isNotEmpty) _gererLecture(url, ep); },
-                ),
+                leading: IconButton(icon: Icon(enCours && _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded, color: const Color(0xFFA855F7), size: 28), onPressed: () { if (url.isNotEmpty) _gererLecture(url, ep); }),
                 title: Text(ep['Titre'] ?? 'Sans titre', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: enCours ? const Color(0xFFA855F7) : titleColor)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(icon: const Icon(Icons.share_rounded, color: Colors.grey, size: 16), onPressed: () => _partagerPodcast(doc.id, ep['Titre'] ?? 'Sans titre')),
-                    IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 16), onPressed: () => _demanderCodeAdmin(docAModifier: doc)),
+                    if (widget.isAdmin) IconButton(icon: const Icon(Icons.settings_rounded, color: Colors.grey, size: 16), onPressed: () => _ouvrirOutilAdmin(docAModifier: doc)),
                     IconButton(icon: Icon(isChapLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: isChapLiked ? Colors.redAccent : Colors.grey, size: 18), onPressed: () => _basculerLike(doc.id)),
                   ],
                 ),
               ),
             );
-          }).toList(), // SYNTAXE LIGNE 731 PARFAITEMENT RECONSTITUÉE ICI
+          }).toList(),
           const SizedBox(height: 120), 
         ],
       ),
@@ -756,10 +735,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                 stream: _podcastsStream,
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  
                   final tousLesDocs = snapshot.data!.docs;
-                  
-                  // ROUTAGE LIENS DIRECTS DE PARTAGE
                   _verifierLienDePartage(tousLesDocs);
 
                   final Set<String> themesUniques = {"Tous"};
@@ -768,31 +744,27 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     if (d['Theme'] != null) themesUniques.add(d['Theme'].toString().trim());
                   }
 
-                  // Cacher les chapitres de l'accueil
                   final listeFiltree = tousLesDocs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final String titre = (data['Titre'] ?? '').toString();
-                    
                     final bool estUnChapitreAMasquer = titre.contains('Partie');
-
                     final bool correspondRecherche = data['Titre'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase()) || data['Description'].toString().toLowerCase().contains(_rechercheTexte.toLowerCase());
                     final bool correspondCategorie = _categorieSelectionnee == "Tous" || data['Theme'] == _categorieSelectionnee;
                     final bool correspondFavoris = !_afficherUniquementFavoris || _podcastsLikesIds.contains(doc.id);
-                    
                     return !estUnChapitreAMasquer && correspondRecherche && correspondCategorie && correspondFavoris;
                   }).toList();
 
                   bool aDesNouveautes = html.window.localStorage['last_check'] != null && tousLesDocs.isNotEmpty;
 
-                  if (_serieSelectionneeData != null) {
-                    return _buildVueAlbumSerie(titleColor, subTitleColor, cardColor);
-                  }
+                  if (_serieSelectionneeData != null) { return _buildVueAlbumSerie(titleColor, subTitleColor, cardColor); }
 
                   return CustomScrollView(
                     slivers: [
                       SliverAppBar(
                         floating: true, pinned: true, centerTitle: true, backgroundColor: barColor, elevation: 2,
-                        leading: IconButton(icon: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF94A3B8)), onPressed: () => _demanderCodeAdmin()),
+                        leading: widget.isAdmin 
+                          ? IconButton(icon: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFFA855F7)), onPressed: () => _ouvrirOutilAdmin())
+                          : const SizedBox.shrink(),
                         title: RichText(text: const TextSpan(children: [TextSpan(text: "ORKYN' ", style: TextStyle(color: Color(0xFFA855F7), fontWeight: FontWeight.bold, fontSize: 20)), TextSpan(text: "Podcasts", style: TextStyle(color: Color(0xFF0EA5E9), fontSize: 20))])),
                         actions: [
                           Stack(children: [IconButton(icon: Icon(Icons.notifications_rounded, color: aDesNouveautes ? const Color(0xFF0EA5E9) : const Color(0xFF475569)), onPressed: () => _ouvrirNotifications(tousLesDocs)), if (aDesNouveautes) Positioned(top: 10, right: 10, child: Container(width: 9, height: 9, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)))]),
@@ -989,12 +961,17 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
 
   @override
   void dispose() {
-    _titleController.dispose(); _descriptionController.dispose(); _themeController.dispose(); _audioUrlController.dispose(); _imageUrlController.dispose();
+    _titleController.dispose(); 
+    _descriptionController.dispose(); 
+    _themeController.dispose(); 
+    _audioUrlController.dispose(); 
+    _imageUrlController.dispose();
     super.dispose();
   }
 
   void _sauvegarder() async {
     if (!_formKey.currentState!.validate()) return;
+    
     setState(() { _enCoursEnvoi = true; });
 
     final data = {
@@ -1012,10 +989,21 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
       } else {
         await FirebaseFirestore.instance.collection('podcasts').doc(widget.podcastDoc!.id).update(data);
       }
-      Navigator.pop(context);
+      
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur : $e")));
-    } finally { setState(() { _enCoursEnvoi = false; }); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur lors de la sauvegarde : $e"), backgroundColor: Colors.red),
+        );
+      }
+    } finally { 
+      if (mounted) {
+        setState(() { _enCoursEnvoi = false; }); 
+      }
+    }
   }
 
   void _supprimer() async {
@@ -1033,7 +1021,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
     );
     if (confirm == true) {
       await FirebaseFirestore.instance.collection('podcasts').doc(widget.podcastDoc!.id).delete();
-      Navigator.pop(context);
+      if (mounted) { Navigator.pop(context); }
     }
   }
 
