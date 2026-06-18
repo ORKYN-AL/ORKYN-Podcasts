@@ -57,7 +57,8 @@ class _MyAppState extends State<MyApp> {
             emailLink: currentUrl,
           );
           
-          // ⚠️ METS TON E-MAIL EXACT ICI (celui de tes règles Firestore)
+          // Détection automatique du rôle Admin si l'adresse e-mail correspond
+          // (Pense à laisser ton e-mail exact ici)
           bool estAdmin = (userCredential.user?.email == "ilyan.tajmouti@orkyn.fr");
           
           html.window.localStorage['orkyn_auth'] = 'true';
@@ -68,7 +69,7 @@ class _MyAppState extends State<MyApp> {
             _isAdmin = estAdmin;
           });
           
-          // Nettoyer l'URL dans la barre d'adresse pour enlever les paramètres Firebase
+          // Nettoyer l'URL pour enlever les paramètres Firebase complexes de la barre d'adresse
           html.window.history.replaceState(null, '', html.window.location.pathname);
         } catch (e) {
           // Lien invalide ou expiré
@@ -164,8 +165,11 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      final currentUri = Uri.parse(html.window.location.href);
-      final baseUrl = '${currentUri.scheme}://${currentUri.host}${currentUri.port != 80 && currentUri.port != 443 ? ":${currentUri.port}" : ""}/';
+      // FIX CORRECTION URL DE RETOUR GITHUB PAGES
+      final String currentUrl = html.window.location.href;
+      final String baseUrl = currentUrl.contains('localhost') 
+          ? 'http://localhost:${html.window.location.port}/'
+          : 'https://orkyn-al.github.io/ORKYN-Podcasts/';
 
       var acs = ActionCodeSettings(
         url: baseUrl,
@@ -559,7 +563,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
     );
   }
 
-  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, SubTitleColor, List<QueryDocumentSnapshot> tousLesPodcasts) {
+  Widget _buildPodcastCardVertical(DocumentSnapshot doc, Color cardColor, Color titleColor, Color subTitleColor, List<QueryDocumentSnapshot> tousLesPodcasts) {
     final Map<String, dynamic> podcast = doc.data() as Map<String, dynamic>;
     final String audioUrl = podcast['audio_url'] ?? '';
     final String imageUrl = podcast['image_url'] ?? '';
@@ -607,7 +611,7 @@ class _PodcastScreenState extends State<PodcastScreen> {
                     const SizedBox(height: 4),
                     Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: widget.isDarkMode ? const Color(0xFF2E1A47) : const Color(0xFFF5F3FF), borderRadius: BorderRadius.circular(20)), child: Text(podcast['Theme'] ?? 'Général', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.w500))),
                     const SizedBox(height: 8),
-                    Text(podcast['Description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: SubTitleColor, height: 1.2)),
+                    Text(podcast['Description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: subTitleColor, height: 1.2)),
                   ],
                 ),
               ),
