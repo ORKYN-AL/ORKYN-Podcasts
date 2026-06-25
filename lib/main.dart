@@ -59,7 +59,7 @@ class _MyAppState extends State<MyApp> {
           
           // Détection automatique du rôle Admin si l'adresse e-mail correspond
           // (Pense à laisser ton e-mail exact ici)
-          bool estAdmin = (userCredential.user?.email == "ilyan.tajmouti@orkyn.fr");
+          bool estAdmin = (userCredential.user?.email == "ilyan.tajmouti@orkyn.fr" || userCredential.user?.email == "alexis.mary@orkyn.fr");
           
           html.window.localStorage['orkyn_auth'] = 'true';
           html.window.localStorage['orkyn_admin'] = estAdmin ? 'true' : 'false';
